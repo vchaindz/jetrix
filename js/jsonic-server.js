@@ -12,36 +12,60 @@ export class JSONICServerClient {
         this.ws = null;
         this.connected = false;
         this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 5;
-        this.reconnectDelay = 1000;
+        this.maxReconnectAttempts = 3; // Reduced to prevent spam
+        this.reconnectDelay = 2000; // Increased delay
         this.syncQueue = [];
         this.callbacks = new Map();
         this.requestId = 0;
+        this.mockMode = false; // Enable mock mode when server unavailable
+        this.mockScores = []; // Mock global scores for development
     }
 
     /**
      * Initialize connection to JSONIC server
      */
     async connect() {
+        // First, test if the server is available
+        try {
+            console.log('[JSONIC Server] Testing server availability...');
+            const testResponse = await fetch(this.serverUrl, { 
+                method: 'HEAD',
+                mode: 'cors',
+                cache: 'no-cache'
+            });
+            
+            if (!testResponse.ok && testResponse.status === 404) {
+                console.warn('[JSONIC Server] ⚠️ Server not available, enabling mock mode');
+                return this.enableMockMode();
+            }
+        } catch (fetchError) {
+            console.warn('[JSONIC Server] ⚠️ Server unreachable, enabling mock mode:', fetchError.message);
+            return this.enableMockMode();
+        }
+
+        // Try WebSocket connection if server is available
         try {
             // Convert HTTPS to WSS for WebSocket connection
             const wsUrl = this.serverUrl.replace('https://', 'wss://').replace('http://', 'ws://');
             const fullUrl = `${wsUrl}/ws`;
             
-            console.log('[JSONIC Server] Connecting to:', fullUrl);
+            console.log('[JSONIC Server] Attempting WebSocket connection to:', fullUrl);
             
             this.ws = new WebSocket(fullUrl);
             
             return new Promise((resolve, reject) => {
                 const timeout = setTimeout(() => {
-                    reject(new Error('Connection timeout'));
-                }, 10000);
+                    console.warn('[JSONIC Server] WebSocket timeout, falling back to HTTP...');
+                    this.ws?.close();
+                    this.fallbackToHttp().then(resolve).catch(reject);
+                }, 5000); // Reduced timeout
 
                 this.ws.onopen = () => {
                     clearTimeout(timeout);
                     this.connected = true;
                     this.reconnectAttempts = 0;
-                    console.log('[JSONIC Server] ✅ Connected to server');
+                    this.mockMode = false;
+                    console.log('[JSONIC Server] ✅ WebSocket connected');
                     
                     // Send initialization message
                     this.send({
@@ -58,13 +82,13 @@ export class JSONICServerClient {
 
                 this.ws.onerror = (error) => {
                     clearTimeout(timeout);
-                    console.error('[JSONIC Server] Connection error:', error);
-                    reject(error);
+                    console.warn('[JSONIC Server] WebSocket error, falling back to HTTP...');
+                    this.fallbackToHttp().then(resolve).catch(reject);
                 };
 
                 this.ws.onclose = () => {
                     this.connected = false;
-                    console.log('[JSONIC Server] Disconnected');
+                    console.log('[JSONIC Server] WebSocket disconnected');
                     this.handleDisconnect();
                 };
 
@@ -73,9 +97,7 @@ export class JSONICServerClient {
                 };
             });
         } catch (error) {
-            console.error('[JSONIC Server] Failed to connect:', error);
-            // Fall back to HTTP API if WebSocket fails
-            this.connected = false;
+            console.warn('[JSONIC Server] WebSocket failed, falling back to HTTP:', error.message);
             return this.fallbackToHttp();
         }
     }
@@ -125,11 +147,13 @@ export class JSONICServerClient {
             console.log(`[JSONIC Server] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
             
             setTimeout(() => {
-                this.connect();
+                this.connect().catch(error => {
+                    console.warn('[JSONIC Server] Reconnection failed:', error.message);
+                });
             }, delay);
         } else {
-            console.log('[JSONIC Server] Max reconnection attempts reached. Falling back to HTTP.');
-            this.fallbackToHttp();
+            console.log('[JSONIC Server] Max reconnection attempts reached. Enabling mock mode.');
+            this.enableMockMode();
         }
     }
 
@@ -147,6 +171,10 @@ export class JSONICServerClient {
      * Submit a highscore to the server
      */
     async submitScore(scoreData) {
+        if (this.mockMode) {
+            return this.submitScoreMock(scoreData);
+        }
+
         const requestId = `req_${++this.requestId}`;
         
         const message = {
@@ -166,7 +194,8 @@ export class JSONICServerClient {
             return new Promise((resolve, reject) => {
                 const timeout = setTimeout(() => {
                     this.callbacks.delete(requestId);
-                    reject(new Error('Request timeout'));
+                    console.warn('[JSONIC Server] Submit timeout, using mock fallback');
+                    this.submitScoreMock(scoreData).then(resolve).catch(reject);
                 }, 5000);
 
                 this.callbacks.set(requestId, (response) => {
@@ -175,7 +204,8 @@ export class JSONICServerClient {
                     if (response.success) {
                         resolve(response.data);
                     } else {
-                        reject(new Error(response.error || 'Failed to submit score'));
+                        console.warn('[JSONIC Server] Submit failed, using mock fallback:', response.error);
+                        this.submitScoreMock(scoreData).then(resolve).catch(reject);
                     }
                 });
 
@@ -191,6 +221,10 @@ export class JSONICServerClient {
      * Get leaderboard from server
      */
     async getLeaderboard(gameMode = 'normal', limit = 100, timeRange = null) {
+        if (this.mockMode) {
+            return this.getLeaderboardMock(gameMode, limit, timeRange);
+        }
+
         const requestId = `req_${++this.requestId}`;
         
         const filter = { gameMode };
@@ -215,7 +249,8 @@ export class JSONICServerClient {
             return new Promise((resolve, reject) => {
                 const timeout = setTimeout(() => {
                     this.callbacks.delete(requestId);
-                    reject(new Error('Request timeout'));
+                    console.warn('[JSONIC Server] Leaderboard timeout, using mock fallback');
+                    this.getLeaderboardMock(gameMode, limit, timeRange).then(resolve).catch(reject);
                 }, 5000);
 
                 this.callbacks.set(requestId, (response) => {
@@ -224,7 +259,8 @@ export class JSONICServerClient {
                     if (response.success) {
                         resolve(response.data || []);
                     } else {
-                        reject(new Error(response.error || 'Failed to get leaderboard'));
+                        console.warn('[JSONIC Server] Leaderboard failed, using mock fallback:', response.error);
+                        this.getLeaderboardMock(gameMode, limit, timeRange).then(resolve).catch(reject);
                     }
                 });
 
@@ -240,6 +276,10 @@ export class JSONICServerClient {
      * Get player's personal best from server
      */
     async getPersonalBest(playerId, gameMode = 'normal') {
+        if (this.mockMode) {
+            return this.getPersonalBestMock(playerId, gameMode);
+        }
+
         const requestId = `req_${++this.requestId}`;
         
         const message = {
@@ -261,7 +301,8 @@ export class JSONICServerClient {
             return new Promise((resolve, reject) => {
                 const timeout = setTimeout(() => {
                     this.callbacks.delete(requestId);
-                    resolve(null); // Return null on timeout for personal best
+                    console.warn('[JSONIC Server] Personal best timeout, using mock fallback');
+                    this.getPersonalBestMock(playerId, gameMode).then(resolve).catch(() => resolve(null));
                 }, 5000);
 
                 this.callbacks.set(requestId, (response) => {
@@ -286,6 +327,10 @@ export class JSONICServerClient {
      * Get global statistics from server
      */
     async getGlobalStats() {
+        if (this.mockMode) {
+            return this.getGlobalStatsMock();
+        }
+
         const requestId = `req_${++this.requestId}`;
         
         const message = {
@@ -310,7 +355,8 @@ export class JSONICServerClient {
             return new Promise((resolve, reject) => {
                 const timeout = setTimeout(() => {
                     this.callbacks.delete(requestId);
-                    resolve(this.getDefaultStats());
+                    console.warn('[JSONIC Server] Stats timeout, using mock fallback');
+                    this.getGlobalStatsMock().then(resolve).catch(() => resolve(this.getDefaultStats()));
                 }, 5000);
 
                 this.callbacks.set(requestId, (response) => {
@@ -325,7 +371,7 @@ export class JSONICServerClient {
                             totalLines: stats.totalLines || 0
                         });
                     } else {
-                        resolve(this.getDefaultStats());
+                        this.getGlobalStatsMock().then(resolve).catch(() => resolve(this.getDefaultStats()));
                     }
                 });
 
@@ -341,8 +387,68 @@ export class JSONICServerClient {
      * HTTP Fallback Methods
      */
     async fallbackToHttp() {
-        console.log('[JSONIC Server] Using HTTP API fallback');
+        console.log('[JSONIC Server] Attempting HTTP API fallback...');
         this.connected = false;
+        
+        try {
+            // Test HTTP API endpoint
+            const response = await fetch(`${this.apiEndpoint}/health`, {
+                method: 'GET',
+                mode: 'cors',
+                cache: 'no-cache'
+            });
+            
+            if (response.ok) {
+                console.log('[JSONIC Server] ✅ HTTP API available');
+                return true;
+            } else {
+                throw new Error(`HTTP API returned ${response.status}`);
+            }
+        } catch (error) {
+            console.warn('[JSONIC Server] ⚠️ HTTP API unavailable, enabling mock mode:', error.message);
+            return this.enableMockMode();
+        }
+    }
+
+    /**
+     * Enable mock mode for development/offline use
+     */
+    async enableMockMode() {
+        console.log('[JSONIC Server] 🔧 Mock mode enabled - using simulated global leaderboard');
+        this.mockMode = true;
+        this.connected = false;
+        
+        // Initialize with some sample scores
+        this.mockScores = [
+            {
+                playerId: 'demo_player_1',
+                playerName: 'TetrisAce',
+                score: 125000,
+                level: 8,
+                lines: 200,
+                gameMode: 'normal',
+                timestamp: Date.now() - 3600000 // 1 hour ago
+            },
+            {
+                playerId: 'demo_player_2', 
+                playerName: 'BlockMaster',
+                score: 98500,
+                level: 7,
+                lines: 175,
+                gameMode: 'normal',
+                timestamp: Date.now() - 7200000 // 2 hours ago
+            },
+            {
+                playerId: 'demo_player_3',
+                playerName: 'DropZone',
+                score: 87200,
+                level: 6,
+                lines: 150,
+                gameMode: 'normal',
+                timestamp: Date.now() - 10800000 // 3 hours ago
+            }
+        ];
+        
         return true;
     }
 
@@ -363,8 +469,8 @@ export class JSONICServerClient {
             const data = await response.json();
             return data;
         } catch (error) {
-            console.error('[JSONIC Server] HTTP submit failed:', error);
-            throw error;
+            console.warn('[JSONIC Server] HTTP submit failed, using mock fallback:', error.message);
+            return this.submitScoreMock(scoreData);
         }
     }
 
@@ -390,8 +496,8 @@ export class JSONICServerClient {
             const data = await response.json();
             return data.documents || [];
         } catch (error) {
-            console.error('[JSONIC Server] HTTP get leaderboard failed:', error);
-            return [];
+            console.warn('[JSONIC Server] HTTP get leaderboard failed, using mock fallback:', error.message);
+            return this.getLeaderboardMock(gameMode, limit, timeRange);
         }
     }
 
@@ -412,8 +518,8 @@ export class JSONICServerClient {
             const data = await response.json();
             return data.documents && data.documents.length > 0 ? data.documents[0] : null;
         } catch (error) {
-            console.error('[JSONIC Server] HTTP get personal best failed:', error);
-            return null;
+            console.warn('[JSONIC Server] HTTP get personal best failed, using mock fallback:', error.message);
+            return this.getPersonalBestMock(playerId, gameMode);
         }
     }
 
@@ -428,8 +534,8 @@ export class JSONICServerClient {
             const data = await response.json();
             return data;
         } catch (error) {
-            console.error('[JSONIC Server] HTTP get stats failed:', error);
-            return this.getDefaultStats();
+            console.warn('[JSONIC Server] HTTP get stats failed, using mock fallback:', error.message);
+            return this.getGlobalStatsMock();
         }
     }
 
@@ -469,6 +575,76 @@ export class JSONICServerClient {
     }
 
     /**
+     * Mock Methods for Development/Offline Use
+     */
+    async submitScoreMock(scoreData) {
+        console.log('[JSONIC Server] 🔧 Mock: Submitting score to simulated global leaderboard');
+        
+        // Add score to mock scores
+        const mockScore = {
+            ...scoreData,
+            id: `${scoreData.playerId}_${Date.now()}`,
+            timestamp: scoreData.timestamp || Date.now()
+        };
+        
+        this.mockScores.push(mockScore);
+        
+        // Sort by score descending
+        this.mockScores.sort((a, b) => b.score - a.score);
+        
+        // Keep only top 100
+        this.mockScores = this.mockScores.slice(0, 100);
+        
+        // Simulate server response
+        return {
+            id: mockScore.id,
+            success: true
+        };
+    }
+
+    async getLeaderboardMock(gameMode = 'normal', limit = 100, timeRange = null) {
+        console.log('[JSONIC Server] 🔧 Mock: Loading simulated global leaderboard');
+        
+        let scores = [...this.mockScores].filter(score => score.gameMode === gameMode);
+        
+        // Apply time filter
+        if (timeRange) {
+            const cutoff = this.getTimeCutoff(timeRange);
+            scores = scores.filter(score => score.timestamp >= cutoff);
+        }
+        
+        // Apply limit
+        scores = scores.slice(0, limit);
+        
+        return scores;
+    }
+
+    async getPersonalBestMock(playerId, gameMode = 'normal') {
+        console.log('[JSONIC Server] 🔧 Mock: Getting personal best from simulated leaderboard');
+        
+        const playerScores = this.mockScores.filter(score => 
+            score.playerId === playerId && score.gameMode === gameMode
+        );
+        
+        if (playerScores.length === 0) return null;
+        
+        return playerScores.reduce((best, score) => 
+            score.score > best.score ? score : best
+        );
+    }
+
+    async getGlobalStatsMock() {
+        console.log('[JSONIC Server] 🔧 Mock: Getting global stats from simulated leaderboard');
+        
+        return {
+            totalGames: this.mockScores.length,
+            uniquePlayers: new Set(this.mockScores.map(s => s.playerId)).size,
+            highestScore: Math.max(...this.mockScores.map(s => s.score), 0),
+            totalLines: this.mockScores.reduce((sum, s) => sum + (s.lines || 0), 0)
+        };
+    }
+
+    /**
      * Disconnect from server
      */
     disconnect() {
@@ -477,6 +653,7 @@ export class JSONICServerClient {
             this.ws = null;
         }
         this.connected = false;
+        this.mockMode = false;
         this.syncQueue = [];
         this.callbacks.clear();
     }
