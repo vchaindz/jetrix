@@ -10,7 +10,7 @@ export default defineConfig({
       }
     },
     assetsInlineLimit: 0, // Don't inline WASM files
-    copyPublicDir: false
+    copyPublicDir: true
   },
   server: {
     port: 3000,
