@@ -1,13 +1,16 @@
-// Jetrix Highscore Manager using JSONIC WebAssembly Database
+// Jetrix Highscore Manager using JSONIC WebAssembly Database with Server Sync
 import JSONIC from './jsonic-wrapper.js';
+import JSONICServerClient from './jsonic-server.js';
 
 export class HighscoreManager {
     constructor() {
         this.db = null;
+        this.serverClient = null;
         this.playerId = null;
         this.leaderboardCache = new Map();
         this.updateCallbacks = new Set();
         this.isInitialized = false;
+        this.serverEnabled = true; // Enable server sync by default
     }
     
     async initialize() {
@@ -21,17 +24,34 @@ export class HighscoreManager {
                 localStorage.setItem('playerId', this.playerId);
             }
             
-            // Configure JSONIC for Jetrix
+            // Configure JSONIC for local storage
             JSONIC.configure({
                 debug: false,
                 enablePersistence: true,
                 persistenceKey: 'jetrix_highscores'
             });
             
-            // Initialize JSONIC database
+            // Initialize local JSONIC database
             this.db = await JSONIC.createDatabase();
             
-            console.log('✅ JSONIC highscore database initialized successfully');
+            console.log('✅ JSONIC local database initialized successfully');
+            
+            // Initialize server connection
+            if (this.serverEnabled) {
+                try {
+                    this.serverClient = new JSONICServerClient('https://jsonic1.immudb.io');
+                    await this.serverClient.connect();
+                    console.log('✅ Connected to JSONIC server for global leaderboard');
+                    
+                    // Listen for real-time updates
+                    window.addEventListener('jsonic-leaderboard-update', (event) => {
+                        this.handleServerUpdate(event.detail);
+                    });
+                } catch (serverError) {
+                    console.warn('⚠️ Could not connect to JSONIC server, using local storage only:', serverError);
+                    this.serverClient = null;
+                }
+            }
             
             // Load initial leaderboard
             await this.loadMiniLeaderboard();
@@ -61,7 +81,8 @@ export class HighscoreManager {
         const result = {
             isHighscore: false,
             rank: null,
-            personalBest: null
+            personalBest: null,
+            globalRank: null
         };
         
         try {
@@ -87,10 +108,25 @@ export class HighscoreManager {
                     metadata: scoreData.metadata || {}
                 };
                 
-                // Insert into JSONIC database
+                // Insert into local JSONIC database
                 await this.db.insertScore(highscoreEntry);
                 
-                // Get current rank
+                // Submit to server if connected
+                if (this.serverClient) {
+                    try {
+                        await this.serverClient.submitScore(highscoreEntry);
+                        console.log('🌐 Score synced to global leaderboard');
+                        
+                        // Get global rank
+                        const globalLeaderboard = await this.serverClient.getLeaderboard(scoreData.gameMode, 1000);
+                        result.globalRank = globalLeaderboard.findIndex(s => s.score < scoreData.score) + 1;
+                        if (result.globalRank === 0) result.globalRank = globalLeaderboard.length + 1;
+                    } catch (serverError) {
+                        console.warn('⚠️ Could not sync score to server:', serverError);
+                    }
+                }
+                
+                // Get local rank
                 result.rank = await this.getRank(scoreData.score, scoreData.gameMode);
                 result.isHighscore = true;
                 
@@ -99,7 +135,7 @@ export class HighscoreManager {
                 await this.loadMiniLeaderboard();
                 this.notifySubscribers();
                 
-                console.log(`🏆 New highscore saved: ${scoreData.score} (Rank #${result.rank})`);
+                console.log(`🏆 New highscore saved: ${scoreData.score} (Local Rank #${result.rank}, Global Rank #${result.globalRank || 'N/A'})`);
             }
             
         } catch (error) {
@@ -149,8 +185,8 @@ export class HighscoreManager {
         }
     }
     
-    async getLeaderboard(gameMode = 'normal', timeRange = 'all', limit = 100) {
-        const cacheKey = `${gameMode}-${timeRange}-${limit}`;
+    async getLeaderboard(gameMode = 'normal', timeRange = 'all', limit = 100, source = 'global') {
+        const cacheKey = `${source}-${gameMode}-${timeRange}-${limit}`;
         
         // Check cache
         if (this.leaderboardCache.has(cacheKey)) {
@@ -160,49 +196,77 @@ export class HighscoreManager {
             }
         }
         
-        if (!this.db) return this.getLeaderboardFallback(gameMode, timeRange, limit);
+        let leaderboard = [];
         
-        try {
-            // Build query filter
-            const filter = { gameMode: gameMode };
-            if (timeRange !== 'all') {
-                filter.timestamp = { $gte: this.getTimeCutoff(timeRange) };
+        // Try to get global leaderboard from server
+        if (source === 'global' && this.serverClient) {
+            try {
+                const serverScores = await this.serverClient.getLeaderboard(gameMode, limit, timeRange);
+                
+                // Format server scores
+                leaderboard = serverScores.map((score, index) => ({
+                    rank: index + 1,
+                    playerId: score.playerId,
+                    playerName: score.playerName,
+                    score: score.score,
+                    level: score.level,
+                    lines: score.lines,
+                    timestamp: score.timestamp,
+                    isCurrentPlayer: score.playerId === this.playerId,
+                    source: 'global'
+                }));
+                
+                console.log(`🌐 Loaded ${leaderboard.length} scores from global leaderboard`);
+            } catch (serverError) {
+                console.warn('⚠️ Could not load global leaderboard:', serverError);
+                source = 'local'; // Fall back to local
             }
-            
-            console.log('🔍 Getting leaderboard with filter:', filter);
-            
-            // Get scores from JSONIC
-            const scores = await this.db.findScores(filter, {
-                sort: { score: -1 },
-                limit: limit
-            });
-            
-            console.log('📊 Found scores:', scores);
-            
-            // Format as leaderboard entries
-            const leaderboard = scores.map((score, index) => ({
-                rank: index + 1,
-                playerId: score.playerId,
-                playerName: score.playerName,
-                score: score.score,
-                level: score.level,
-                lines: score.lines,
-                timestamp: score.timestamp,
-                isCurrentPlayer: score.playerId === this.playerId
-            }));
-            
-            // Cache result
-            this.leaderboardCache.set(cacheKey, {
-                data: leaderboard,
-                timestamp: Date.now()
-            });
-            
-            return leaderboard;
-            
-        } catch (error) {
-            console.error('Failed to get leaderboard from JSONIC:', error);
-            return this.getLeaderboardFallback(gameMode, timeRange, limit);
         }
+        
+        // Get local leaderboard
+        if (source === 'local' || leaderboard.length === 0) {
+            if (!this.db) return this.getLeaderboardFallback(gameMode, timeRange, limit);
+            
+            try {
+                // Build query filter
+                const filter = { gameMode: gameMode };
+                if (timeRange !== 'all') {
+                    filter.timestamp = { $gte: this.getTimeCutoff(timeRange) };
+                }
+                
+                // Get scores from local JSONIC
+                const scores = await this.db.findScores(filter, {
+                    sort: { score: -1 },
+                    limit: limit
+                });
+                
+                // Format as leaderboard entries
+                leaderboard = scores.map((score, index) => ({
+                    rank: index + 1,
+                    playerId: score.playerId,
+                    playerName: score.playerName,
+                    score: score.score,
+                    level: score.level,
+                    lines: score.lines,
+                    timestamp: score.timestamp,
+                    isCurrentPlayer: score.playerId === this.playerId,
+                    source: 'local'
+                }));
+                
+                console.log(`📱 Loaded ${leaderboard.length} scores from local leaderboard`);
+            } catch (error) {
+                console.error('Failed to get leaderboard from JSONIC:', error);
+                return this.getLeaderboardFallback(gameMode, timeRange, limit);
+            }
+        }
+        
+        // Cache result
+        this.leaderboardCache.set(cacheKey, {
+            data: leaderboard,
+            timestamp: Date.now()
+        });
+        
+        return leaderboard;
     }
     
     getTimeCutoff(timeRange) {
@@ -221,11 +285,19 @@ export class HighscoreManager {
     
     async loadMiniLeaderboard() {
         try {
-            const scores = await this.getLeaderboard('normal', 'all', 5);
+            // Try to load global leaderboard first, fall back to local
+            const scores = await this.getLeaderboard('normal', 'all', 5, 'global');
             this.updateMiniLeaderboard(scores);
         } catch (error) {
             console.error('Failed to load mini leaderboard:', error);
-            this.updateMiniLeaderboard([]);
+            // Try local as fallback
+            try {
+                const localScores = await this.getLeaderboard('normal', 'all', 5, 'local');
+                this.updateMiniLeaderboard(localScores);
+            } catch (localError) {
+                console.error('Failed to load local mini leaderboard:', localError);
+                this.updateMiniLeaderboard([]);
+            }
         }
     }
     
@@ -290,15 +362,23 @@ export class HighscoreManager {
         
         content.innerHTML = '<div class="loading">Loading scores...</div>';
         
+        // Determine source based on active tab
+        const isGlobalTab = document.querySelector('.source-btn.active')?.dataset.source === 'global';
+        const source = isGlobalTab ? 'global' : 'local';
+        
         try {
-            const scores = await this.getLeaderboard(gameMode, timeRange, 50);
+            const scores = await this.getLeaderboard(gameMode, timeRange, 50, source);
             
             if (scores.length === 0) {
-                content.innerHTML = '<div class="no-scores">No scores recorded yet. Be the first!</div>';
+                content.innerHTML = `<div class="no-scores">No ${source} scores recorded yet. Be the first!</div>`;
                 return;
             }
             
+            // Add source indicator
+            const sourceIndicator = source === 'global' ? '🌐 Global' : '📱 Local';
+            
             content.innerHTML = `
+                <div class="leaderboard-source">${sourceIndicator} Leaderboard</div>
                 <div class="leaderboard-table">
                     <div class="leaderboard-header">
                         <span class="col-rank">RANK</span>
@@ -459,6 +539,50 @@ export class HighscoreManager {
             return stored ? JSON.parse(stored) : [];
         } catch {
             return [];
+        }
+    }
+    
+    handleServerUpdate(data) {
+        // Clear cache when server data updates
+        this.leaderboardCache.clear();
+        
+        // Reload mini leaderboard if it's a new high score
+        if (data.score && data.gameMode === 'normal') {
+            this.loadMiniLeaderboard();
+        }
+        
+        // Notify subscribers of update
+        this.notifySubscribers();
+        
+        console.log('📡 Received leaderboard update from server:', data);
+    }
+    
+    async syncWithServer() {
+        if (!this.serverClient) return;
+        
+        try {
+            // Get all local scores
+            const localScores = await this.db.getAllScores();
+            
+            // Submit each score to server (server will handle duplicates)
+            for (const score of localScores) {
+                try {
+                    await this.serverClient.submitScore(score);
+                } catch (error) {
+                    console.warn('Failed to sync score:', score, error);
+                }
+            }
+            
+            console.log(`✅ Synced ${localScores.length} local scores to server`);
+        } catch (error) {
+            console.error('Failed to sync with server:', error);
+        }
+    }
+    
+    disconnect() {
+        if (this.serverClient) {
+            this.serverClient.disconnect();
+            this.serverClient = null;
         }
     }
 }

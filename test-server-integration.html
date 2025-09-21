@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jetrix Server Integration Test</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+            background: #1a1a1a; 
+            color: #fff;
+        }
+        .test-section { 
+            margin: 20px 0; 
+            padding: 15px; 
+            border: 1px solid #333; 
+            border-radius: 5px;
+        }
+        .test-result { 
+            padding: 10px; 
+            margin: 10px 0; 
+            border-radius: 3px;
+        }
+        .success { background: #1a5d1a; }
+        .error { background: #5d1a1a; }
+        .warning { background: #5d5d1a; }
+        button { 
+            padding: 10px 20px; 
+            margin: 5px; 
+            background: #007acc; 
+            color: white; 
+            border: none; 
+            border-radius: 3px; 
+            cursor: pointer;
+        }
+        button:hover { background: #005a9a; }
+        #console { 
+            background: #000; 
+            color: #0f0; 
+            padding: 10px; 
+            font-family: monospace; 
+            max-height: 300px; 
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎮 Jetrix Server Integration Test</h1>
+    
+    <div class="test-section">
+        <h2>Connection Status</h2>
+        <div id="connectionStatus">Testing...</div>
+        <button onclick="testConnection()">Test Connection</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Score Submission Test</h2>
+        <div id="scoreStatus">Ready</div>
+        <button onclick="testScoreSubmission()">Submit Test Score</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Leaderboard Test</h2>
+        <div id="leaderboardStatus">Ready</div>
+        <button onclick="testLeaderboard()">Load Global Leaderboard</button>
+        <button onclick="testLocalLeaderboard()">Load Local Leaderboard</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Debug Console</h2>
+        <div id="console"></div>
+        <button onclick="clearConsole()">Clear Console</button>
+    </div>
+
+    <script type="module">
+        import JSONICServerClient from './js/jsonic-server.js';
+        import { HighscoreManager } from './js/highscore.js';
+
+        let serverClient;
+        let highscoreManager;
+        
+        // Console logging
+        const consoleDiv = document.getElementById('console');
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+        
+        function logToDiv(level, ...args) {
+            const timestamp = new Date().toTimeString().slice(0, 8);
+            const message = `[${timestamp}] [${level}] ${args.join(' ')}\n`;
+            consoleDiv.textContent += message;
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
+        
+        console.log = (...args) => {
+            originalLog(...args);
+            logToDiv('LOG', ...args);
+        };
+        
+        console.error = (...args) => {
+            originalError(...args);
+            logToDiv('ERROR', ...args);
+        };
+        
+        console.warn = (...args) => {
+            originalWarn(...args);
+            logToDiv('WARN', ...args);
+        };
+
+        function updateStatus(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="test-result ${type}">${message}</div>`;
+        }
+
+        // Initialize
+        async function init() {
+            try {
+                console.log('Initializing Jetrix server integration test...');
+                
+                // Initialize highscore manager
+                highscoreManager = new HighscoreManager();
+                await highscoreManager.initialize();
+                
+                // Initialize server client
+                serverClient = new JSONICServerClient('https://jsonic1.immudb.io');
+                
+                console.log('✅ Initialization complete');
+                updateStatus('connectionStatus', 'Initialized - Ready to test', 'success');
+            } catch (error) {
+                console.error('❌ Initialization failed:', error);
+                updateStatus('connectionStatus', `Initialization failed: ${error.message}`, 'error');
+            }
+        }
+
+        window.testConnection = async function() {
+            try {
+                updateStatus('connectionStatus', 'Testing connection...', 'warning');
+                console.log('Testing connection to JSONIC server...');
+                
+                await serverClient.connect();
+                console.log('✅ Successfully connected to server');
+                updateStatus('connectionStatus', 'Connected to JSONIC server successfully!', 'success');
+            } catch (error) {
+                console.error('❌ Connection failed:', error);
+                updateStatus('connectionStatus', `Connection failed: ${error.message}`, 'error');
+            }
+        };
+
+        window.testScoreSubmission = async function() {
+            try {
+                updateStatus('scoreStatus', 'Submitting test score...', 'warning');
+                console.log('Submitting test score...');
+                
+                const testScore = {
+                    playerName: 'TestPlayer',
+                    score: Math.floor(Math.random() * 100000) + 10000,
+                    level: Math.floor(Math.random() * 10) + 1,
+                    lines: Math.floor(Math.random() * 200) + 50,
+                    gameMode: 'normal'
+                };
+                
+                const result = await highscoreManager.submitScore(testScore);
+                console.log('✅ Score submitted successfully:', result);
+                updateStatus('scoreStatus', 
+                    `Score submitted! Local Rank: #${result.rank}, Global Rank: #${result.globalRank || 'N/A'}`, 
+                    'success'
+                );
+            } catch (error) {
+                console.error('❌ Score submission failed:', error);
+                updateStatus('scoreStatus', `Score submission failed: ${error.message}`, 'error');
+            }
+        };
+
+        window.testLeaderboard = async function() {
+            try {
+                updateStatus('leaderboardStatus', 'Loading global leaderboard...', 'warning');
+                console.log('Loading global leaderboard...');
+                
+                const leaderboard = await highscoreManager.getLeaderboard('normal', 'all', 10, 'global');
+                console.log('✅ Global leaderboard loaded:', leaderboard);
+                updateStatus('leaderboardStatus', 
+                    `Global leaderboard loaded: ${leaderboard.length} scores`, 
+                    'success'
+                );
+            } catch (error) {
+                console.error('❌ Global leaderboard loading failed:', error);
+                updateStatus('leaderboardStatus', `Global leaderboard failed: ${error.message}`, 'error');
+            }
+        };
+
+        window.testLocalLeaderboard = async function() {
+            try {
+                updateStatus('leaderboardStatus', 'Loading local leaderboard...', 'warning');
+                console.log('Loading local leaderboard...');
+                
+                const leaderboard = await highscoreManager.getLeaderboard('normal', 'all', 10, 'local');
+                console.log('✅ Local leaderboard loaded:', leaderboard);
+                updateStatus('leaderboardStatus', 
+                    `Local leaderboard loaded: ${leaderboard.length} scores`, 
+                    'success'
+                );
+            } catch (error) {
+                console.error('❌ Local leaderboard loading failed:', error);
+                updateStatus('leaderboardStatus', `Local leaderboard failed: ${error.message}`, 'error');
+            }
+        };
+
+        window.clearConsole = function() {
+            consoleDiv.textContent = '';
+        };
+
+        // Start initialization
+        init();
+    </script>
+</body>
+</html>
