@@ -169,11 +169,15 @@ export class HighscoreManager {
                 filter.timestamp = { $gte: this.getTimeCutoff(timeRange) };
             }
             
+            console.log('🔍 Getting leaderboard with filter:', filter);
+            
             // Get scores from JSONIC
             const scores = await this.db.findScores(filter, {
                 sort: { score: -1 },
                 limit: limit
             });
+            
+            console.log('📊 Found scores:', scores);
             
             // Format as leaderboard entries
             const leaderboard = scores.map((score, index) => ({

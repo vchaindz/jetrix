@@ -237,15 +237,38 @@ class JetrixDatabase {
     
     async getAllScores() {
         try {
+            if (CONFIG.debug) {
+                console.log('[JSONIC] getAllScores: Getting list of IDs...');
+            }
+            
             const idsResult = await this.db.list_ids();
             const ids = typeof idsResult === 'string' ? JSON.parse(idsResult) : idsResult;
+            
+            if (CONFIG.debug) {
+                console.log('[JSONIC] getAllScores: Raw IDs result:', idsResult);
+                console.log('[JSONIC] getAllScores: Parsed IDs:', ids);
+            }
+            
             const scores = [];
             
             for (const id of ids.data || []) {
+                if (CONFIG.debug) {
+                    console.log('[JSONIC] getAllScores: Getting score for ID:', id);
+                }
+                
                 const score = await this.getScore(id);
+                
+                if (CONFIG.debug) {
+                    console.log('[JSONIC] getAllScores: Retrieved score:', score);
+                }
+                
                 if (score) {
                     scores.push({ ...score, _id: id });
                 }
+            }
+            
+            if (CONFIG.debug) {
+                console.log('[JSONIC] getAllScores: Final scores array:', scores);
             }
             
             return scores;
@@ -257,7 +280,19 @@ class JetrixDatabase {
 
     // MongoDB-style query methods for highscores
     async findScores(filter = {}, options = {}) {
+        if (CONFIG.debug) {
+            console.log('[JSONIC] findScores called with filter:', filter, 'options:', options);
+        }
+        
         const allScores = await this.getAllScores();
+        
+        if (CONFIG.debug) {
+            console.log('[JSONIC] getAllScores returned:', allScores.length, 'scores');
+            if (allScores.length > 0) {
+                console.log('[JSONIC] First score example:', allScores[0]);
+            }
+        }
+        
         let filtered = allScores;
         
         // Apply filters
