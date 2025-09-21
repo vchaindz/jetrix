@@ -47,7 +47,7 @@ export class JSONICServerClient {
         try {
             // Convert HTTPS to WSS for WebSocket connection
             const wsUrl = this.serverUrl.replace('https://', 'wss://').replace('http://', 'ws://');
-            const fullUrl = `${wsUrl}/ws`;
+            const fullUrl = `${wsUrl}/api/v1/ws`;
             
             console.log('[JSONIC Server] Attempting WebSocket connection to:', fullUrl);
             
