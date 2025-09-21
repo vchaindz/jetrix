@@ -162,7 +162,7 @@ class SimpleJSONICServerClient {
                 limit
             });
 
-            console.log('📥 Raw server response:', result);
+            console.log('📥 Raw server response:', JSON.stringify(result, null, 2));
 
             // Add rank to each entry
             const leaderboard = result.map((score, index) => ({
