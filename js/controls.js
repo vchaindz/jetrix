@@ -199,6 +199,9 @@ export class Controls {
         canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
         canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
         canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e), { passive: false });
+        
+        // Setup mobile control buttons
+        this.setupMobileButtons();
     }
     
     handleTouchStart(e) {
@@ -217,8 +220,8 @@ export class Controls {
         const deltaX = touch.clientX - this.touchStartX;
         const deltaY = touch.clientY - this.touchStartY;
         
-        // Swipe threshold
-        const threshold = 30;
+        // Swipe threshold - made more responsive for mobile
+        const threshold = 25;
         
         // Horizontal swipe (move piece)
         if (Math.abs(deltaX) > threshold && Math.abs(deltaX) > Math.abs(deltaY)) {
@@ -247,13 +250,13 @@ export class Controls {
         const deltaX = Math.abs(touch.clientX - this.touchStartX);
         const deltaY = Math.abs(touch.clientY - this.touchStartY);
         
-        // Tap detection (rotate)
-        if (touchDuration < 200 && deltaX < 10 && deltaY < 10) {
+        // Tap detection (rotate) - made more forgiving
+        if (touchDuration < 250 && deltaX < 15 && deltaY < 15) {
             this.handleRotate();
         }
         
-        // Quick swipe up (hard drop)
-        if (touchDuration < 200 && deltaY > 50 && (touch.clientY - this.touchStartY) < -50) {
+        // Quick swipe up (hard drop) - made more responsive
+        if (touchDuration < 300 && deltaY > 40 && (touch.clientY - this.touchStartY) < -40) {
             this.handleHardDrop();
         }
         
@@ -363,5 +366,96 @@ export class Controls {
         
         // Continue polling
         requestAnimationFrame(() => this.pollGamepad());
+    }
+    
+    // Mobile control buttons
+    setupMobileButtons() {
+        // Get all mobile control buttons
+        const mobileButtons = document.querySelectorAll('.control-btn[data-action]');
+        
+        mobileButtons.forEach(button => {
+            const action = button.getAttribute('data-action');
+            
+            // Handle touch events for mobile buttons
+            button.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.handleMobileButtonPress(action);
+                button.classList.add('pressed');
+            }, { passive: false });
+            
+            button.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.handleMobileButtonRelease(action);
+                button.classList.remove('pressed');
+            }, { passive: false });
+            
+            // Also handle mouse events for testing on desktop
+            button.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                this.handleMobileButtonPress(action);
+                button.classList.add('pressed');
+            });
+            
+            button.addEventListener('mouseup', (e) => {
+                e.preventDefault();
+                this.handleMobileButtonRelease(action);
+                button.classList.remove('pressed');
+            });
+            
+            button.addEventListener('mouseleave', (e) => {
+                this.handleMobileButtonRelease(action);
+                button.classList.remove('pressed');
+            });
+        });
+    }
+    
+    handleMobileButtonPress(action) {
+        // Allow pause action even when game is not playing or is paused
+        if (action === 'pause') {
+            this.handlePause();
+            return;
+        }
+        
+        // For other actions, check if game is playable
+        if (!this.game.isPlaying || this.game.isPaused) {
+            return;
+        }
+        
+        switch (action) {
+            case 'left':
+                this.handleMoveLeft();
+                this.startDAS('left');
+                break;
+            case 'right':
+                this.handleMoveRight();
+                this.startDAS('right');
+                break;
+            case 'softdrop':
+                this.handleSoftDrop();
+                break;
+            case 'harddrop':
+                this.handleHardDrop();
+                break;
+            case 'rotate':
+                this.handleRotate();
+                break;
+            case 'hold':
+                this.handleHold();
+                break;
+        }
+    }
+    
+    handleMobileButtonRelease(action) {
+        switch (action) {
+            case 'left':
+            case 'right':
+                this.stopDAS();
+                break;
+            case 'softdrop':
+                this.stopSoftDrop();
+                break;
+        }
     }
 }

@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jetrix - Neon Tetris</title>
-  <script type="module" crossorigin src="/jetrix/assets/main-NdQ8wFEG.js"></script>
-  <link rel="stylesheet" crossorigin href="/jetrix/assets/main-CIEKPpMP.css">
+  <script type="module" crossorigin src="/jetrix/assets/main-C0seY4Qu.js"></script>
+  <link rel="stylesheet" crossorigin href="/jetrix/assets/main-CpXhI1OA.css">
 </head>
 <body>
     <div class="game-container">
@@ -47,6 +47,43 @@
                     <h2 id="overlayTitle">PAUSED</h2>
                     <p id="overlayMessage">Press SPACE to continue</p>
                     <button class="btn-neon" id="overlayButton">RESUME</button>
+                </div>
+            </div>
+            
+            <!-- Mobile Touch Controls -->
+            <div class="mobile-controls" id="mobileControls">
+                <div class="control-row control-row-top">
+                    <button class="control-btn" id="holdBtn" data-action="hold">
+                        <span class="control-icon">📦</span>
+                        <span class="control-label">HOLD</span>
+                    </button>
+                    <button class="control-btn" id="rotateBtn" data-action="rotate">
+                        <span class="control-icon">🔄</span>
+                        <span class="control-label">ROTATE</span>
+                    </button>
+                    <button class="control-btn" id="pauseBtn" data-action="pause">
+                        <span class="control-icon">⏸️</span>
+                        <span class="control-label">PAUSE</span>
+                    </button>
+                </div>
+                
+                <div class="control-row control-row-bottom">
+                    <div class="movement-controls">
+                        <button class="control-btn movement-btn" id="leftBtn" data-action="left">
+                            <span class="control-icon">⬅️</span>
+                        </button>
+                        <div class="drop-controls">
+                            <button class="control-btn drop-btn" id="softDropBtn" data-action="softdrop">
+                                <span class="control-icon">⬇️</span>
+                            </button>
+                            <button class="control-btn drop-btn" id="hardDropBtn" data-action="harddrop">
+                                <span class="control-icon">⚡</span>
+                            </button>
+                        </div>
+                        <button class="control-btn movement-btn" id="rightBtn" data-action="right">
+                            <span class="control-icon">➡️</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

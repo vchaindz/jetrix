@@ -640,6 +640,153 @@ body {
     font-style: italic;
 }
 
+/* Mobile Touch Controls */
+.mobile-controls {
+    display: none;
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 320px;
+    padding: 10px;
+    background: rgba(10, 10, 30, 0.9);
+    border-radius: 15px;
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 0 30px rgba(0, 255, 255, 0.2);
+}
+
+.control-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.control-row:last-child {
+    margin-bottom: 0;
+}
+
+.control-btn {
+    background: linear-gradient(145deg, rgba(0, 255, 255, 0.15), rgba(255, 0, 255, 0.15));
+    border: 1px solid rgba(0, 255, 255, 0.4);
+    border-radius: 10px;
+    color: #00ffff;
+    padding: 12px;
+    min-height: 60px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+    touch-action: manipulation;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7em;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
+}
+
+.control-btn:active,
+.control-btn.pressed {
+    background: linear-gradient(145deg, rgba(0, 255, 255, 0.3), rgba(255, 0, 255, 0.3));
+    transform: scale(0.95);
+    box-shadow: 0 0 25px rgba(0, 255, 255, 0.4);
+}
+
+.control-btn .control-icon {
+    font-size: 1.5em;
+    margin-bottom: 4px;
+    display: block;
+}
+
+.control-btn .control-label {
+    font-size: 0.8em;
+    opacity: 0.8;
+}
+
+.control-row-top .control-btn {
+    flex: 1;
+}
+
+.movement-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+}
+
+.movement-btn {
+    flex: 0 0 60px;
+}
+
+.drop-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    margin: 0 10px;
+}
+
+.drop-btn {
+    flex: 1;
+    min-height: 40px;
+    padding: 8px;
+}
+
+.drop-btn .control-icon {
+    font-size: 1.2em;
+    margin-bottom: 0;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) and (orientation: portrait) {
+    .mobile-controls {
+        display: block;
+    }
+    
+    .controls-info {
+        display: none;
+    }
+    
+    .game-board {
+        margin-bottom: 120px;
+    }
+}
+
+@media (max-width: 768px) and (orientation: landscape) {
+    .mobile-controls {
+        display: block;
+        bottom: 5px;
+        max-width: 280px;
+        padding: 8px;
+    }
+    
+    .control-btn {
+        min-height: 50px;
+        padding: 8px;
+    }
+    
+    .drop-btn {
+        min-height: 35px;
+        padding: 6px;
+    }
+    
+    .game-board {
+        margin-bottom: 80px;
+    }
+}
+
+/* Hide mobile controls on desktop */
+@media (min-width: 769px) {
+    .mobile-controls {
+        display: none !important;
+    }
+}
+
 /* Responsive design */
 @media (max-width: 1200px) {
     .game-container {
@@ -654,12 +801,59 @@ body {
 }
 
 @media (max-width: 768px) {
+    body {
+        overflow: auto;
+    }
+    
     .game-container {
         padding: 10px;
+        flex-direction: column;
+        align-items: center;
+        gap: 15px;
+        min-height: auto;
     }
     
     .logo h1 {
         font-size: 1.8em;
+    }
+    
+    .left-panel, .right-panel {
+        width: 100%;
+        max-width: 320px;
+        padding: 15px;
+    }
+    
+    .left-panel {
+        order: 1;
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 15px;
+        justify-content: space-between;
+        align-items: flex-start;
+    }
+    
+    .logo {
+        flex: 1 1 100%;
+        text-align: center;
+        margin-bottom: 10px;
+    }
+    
+    .score-display, .level-display, .lines-display {
+        flex: 1 1 30%;
+        margin-bottom: 10px;
+        min-width: 80px;
+    }
+    
+    .hold-box {
+        flex: 1 1 100%;
+        margin-bottom: 0;
+    }
+    
+    .game-board {
+        order: 2;
+        position: relative;
+        margin-bottom: 0;
     }
     
     #gameCanvas {
@@ -667,8 +861,31 @@ body {
         height: 500px;
     }
     
+    .right-panel {
+        order: 3;
+        display: flex;
+        flex-direction: row;
+        gap: 15px;
+        align-items: flex-start;
+    }
+    
+    .next-box {
+        flex: 0 0 140px;
+        margin-bottom: 0;
+    }
+    
+    .highscore-mini {
+        flex: 1;
+        margin-bottom: 0;
+    }
+    
+    .controls-info {
+        display: none;
+    }
+    
     .modal-content {
         padding: 20px;
+        margin: 10px;
     }
     
     .leaderboard-header, .leaderboard-entry {
@@ -677,5 +894,87 @@ body {
     
     .col-lines, .col-date {
         display: none;
+    }
+    
+    /* Adjust difficulty buttons for mobile */
+    .difficulty-buttons {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .btn-difficulty {
+        padding: 12px;
+    }
+    
+    /* Game over buttons */
+    .game-over-buttons {
+        flex-direction: column;
+        gap: 10px;
+    }
+}
+
+/* Portrait orientation specific adjustments */
+@media (max-width: 768px) and (orientation: portrait) {
+    .left-panel {
+        order: 1;
+    }
+    
+    .game-board {
+        order: 2;
+        margin-bottom: 140px; /* Space for mobile controls */
+    }
+    
+    .right-panel {
+        order: 3;
+    }
+}
+
+/* Landscape orientation specific adjustments */
+@media (max-width: 768px) and (orientation: landscape) {
+    .game-container {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .left-panel {
+        order: 1;
+        flex: 0 0 200px;
+        max-width: 200px;
+    }
+    
+    .left-panel .score-display, 
+    .left-panel .level-display, 
+    .left-panel .lines-display {
+        flex: 1 1 100%;
+        margin-bottom: 8px;
+    }
+    
+    .game-board {
+        order: 2;
+        flex: 0 0 auto;
+        margin-bottom: 100px; /* Space for mobile controls */
+    }
+    
+    #gameCanvas {
+        width: 200px;
+        height: 400px;
+    }
+    
+    .right-panel {
+        order: 3;
+        flex: 0 0 200px;
+        max-width: 200px;
+        flex-direction: column;
+    }
+    
+    .next-box {
+        flex: 1;
+    }
+    
+    .highscore-mini {
+        flex: 1;
     }
 }
