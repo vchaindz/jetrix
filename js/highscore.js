@@ -204,7 +204,7 @@ export class HighscoreManager {
         // Try to get global leaderboard from server
         if (source === 'global' && this.serverClient) {
             try {
-                const serverScores = await this.serverClient.getLeaderboard(gameMode, limit, timeRange);
+                const serverScores = await this.serverClient.getLeaderboard(gameMode, { limit, timeRange });
                 
                 // Format server scores
                 leaderboard = serverScores.map((score, index) => ({
