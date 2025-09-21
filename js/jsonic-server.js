@@ -90,16 +90,18 @@ class SimpleJSONICServerClient {
         }
     }
 
-    async sendRequest(request) {
+    async sendRequest(type, collection, data = {}) {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             throw new Error('Not connected to server');
         }
 
         const requestId = `req_${++this.requestId}`;
         const message = {
-            ...request,
+            type,
             database: this.database,
-            requestId
+            collection,
+            requestId,
+            ...data
         };
 
         return new Promise((resolve, reject) => {
@@ -118,15 +120,14 @@ class SimpleJSONICServerClient {
                 }
             });
 
+            console.log('📤 Sending WebSocket request:', message);
             this.ws.send(JSON.stringify(message));
         });
     }
 
     async submitScore(highscore) {
         try {
-            const result = await this.sendRequest({
-                type: 'insert',
-                collection: 'highscores',
+            const result = await this.sendRequest('insert', 'highscores', {
                 document: {
                     ...highscore,
                     timestamp: Date.now()
@@ -134,7 +135,7 @@ class SimpleJSONICServerClient {
             });
             
             console.log('✅ Score submitted to server:', result);
-            return { success: true, id: result.insertedId };
+            return { success: true, id: result.id || result.insertedId };
         } catch (error) {
             console.error('❌ Failed to submit score:', error);
             return { success: false, error: error.message };
@@ -152,9 +153,7 @@ class SimpleJSONICServerClient {
                 filter.timestamp = { $gte: cutoff };
             }
 
-            const result = await this.sendRequest({
-                type: 'query',
-                collection: 'highscores',
+            const result = await this.sendRequest('query', 'highscores', {
                 filter,
                 sort: { score: -1 },
                 limit
@@ -176,9 +175,7 @@ class SimpleJSONICServerClient {
 
     async getPersonalBest(playerId, gameMode = 'normal') {
         try {
-            const result = await this.sendRequest({
-                type: 'query',
-                collection: 'highscores',
+            const result = await this.sendRequest('query', 'highscores', {
                 filter: { playerId, gameMode },
                 sort: { score: -1 },
                 limit: 1
