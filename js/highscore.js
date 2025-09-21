@@ -47,6 +47,9 @@ export class HighscoreManager {
                     window.addEventListener('jsonic-leaderboard-update', (event) => {
                         this.handleServerUpdate(event.detail);
                     });
+                    
+                    // Sync existing local scores to server
+                    await this.syncExistingScoresToServer();
                 } catch (serverError) {
                     console.warn('⚠️ Could not connect to JSONIC server, using local storage only:', serverError);
                     this.serverClient = null;
@@ -576,6 +579,88 @@ export class HighscoreManager {
             console.log(`✅ Synced ${localScores.length} local scores to server`);
         } catch (error) {
             console.error('Failed to sync with server:', error);
+        }
+    }
+    
+    async syncExistingScoresToServer() {
+        if (!this.serverClient) return;
+        
+        try {
+            console.log('🔄 Checking for existing local scores to sync...');
+            
+            // Get all local scores from JSONIC WASM database
+            let localScores = [];
+            if (this.db) {
+                localScores = await this.db.getAllScores();
+                console.log(`📱 Found ${localScores.length} scores in local JSONIC database`);
+            }
+            
+            // Also check localStorage for legacy scores from before JSONIC integration
+            const legacyScores = this.getLocalScores();
+            console.log(`💾 Found ${legacyScores.length} legacy scores in localStorage`);
+            
+            // Combine and deduplicate scores
+            const allScores = [...localScores];
+            
+            // Add legacy scores that aren't already in JSONIC
+            for (const legacyScore of legacyScores) {
+                const exists = allScores.some(score => 
+                    score.playerId === legacyScore.playerId && 
+                    score.score === legacyScore.score &&
+                    score.timestamp === legacyScore.timestamp
+                );
+                
+                if (!exists) {
+                    // Convert legacy score format to JSONIC format
+                    const convertedScore = {
+                        playerId: legacyScore.playerId || this.playerId,
+                        playerName: legacyScore.playerName || 'Anonymous',
+                        score: legacyScore.score,
+                        level: legacyScore.level || 1,
+                        lines: legacyScore.lines || 0,
+                        gameMode: legacyScore.gameMode || 'normal',
+                        timestamp: legacyScore.timestamp || Date.now(),
+                        metadata: legacyScore.metadata || {}
+                    };
+                    
+                    allScores.push(convertedScore);
+                    
+                    // Also save to local JSONIC database
+                    if (this.db) {
+                        await this.db.insertScore(convertedScore);
+                    }
+                }
+            }
+            
+            console.log(`🎯 Total unique scores to sync: ${allScores.length}`);
+            
+            if (allScores.length === 0) {
+                console.log('✅ No existing scores to sync');
+                return;
+            }
+            
+            // Upload each score to server
+            let syncedCount = 0;
+            let skippedCount = 0;
+            
+            for (const score of allScores) {
+                try {
+                    await this.serverClient.submitScore(score);
+                    syncedCount++;
+                    console.log(`✅ Synced score: ${score.score} by ${score.playerName}`);
+                } catch (error) {
+                    skippedCount++;
+                    console.warn(`⚠️ Failed to sync score ${score.score}:`, error.message);
+                }
+            }
+            
+            console.log(`🌐 Sync complete: ${syncedCount} uploaded, ${skippedCount} skipped`);
+            
+            // Clear cache to reload with server data
+            this.leaderboardCache.clear();
+            
+        } catch (error) {
+            console.error('❌ Failed to sync existing scores:', error);
         }
     }
     
