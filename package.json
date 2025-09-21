@@ -1,0 +1,30 @@
+{
+  "name": "jetrix",
+  "version": "1.0.0",
+  "description": "A browser-based Tetris clone with distributed highscores using JSONIC",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve": "npx http-server -p 8080",
+    "build:gh-pages": "vite build --base=/jetrix/",
+    "deploy": "npm run build:gh-pages && gh-pages -d docs",
+    "predeploy": "npm run build:gh-pages"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "http-server": "^14.1.1",
+    "gh-pages": "^6.0.0"
+  },
+  "keywords": [
+    "tetris",
+    "game",
+    "browser",
+    "jsonic",
+    "highscore"
+  ],
+  "author": "",
+  "license": "MIT"
+}

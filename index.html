@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jetrix - Neon Tetris</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="game-container">
+        <div class="background-animation"></div>
+        
+        <!-- Left Panel - Game Info -->
+        <div class="side-panel left-panel">
+            <div class="logo">
+                <h1>JETRIX</h1>
+                <div class="logo-subtitle">NEON TETRIS</div>
+            </div>
+            
+            <div class="score-display">
+                <div class="score-label">SCORE</div>
+                <div class="score-value" id="score">0</div>
+            </div>
+            
+            <div class="level-display">
+                <div class="level-label">LEVEL</div>
+                <div class="level-value" id="level">1</div>
+            </div>
+            
+            <div class="lines-display">
+                <div class="lines-label">LINES</div>
+                <div class="lines-value" id="lines">0</div>
+            </div>
+            
+            <div class="hold-box">
+                <div class="hold-label">HOLD</div>
+                <canvas id="holdCanvas" width="120" height="120"></canvas>
+            </div>
+        </div>
+        
+        <!-- Main Game Board -->
+        <div class="game-board">
+            <canvas id="gameCanvas" width="300" height="600"></canvas>
+            <div class="game-overlay" id="gameOverlay">
+                <div class="overlay-content">
+                    <h2 id="overlayTitle">PAUSED</h2>
+                    <p id="overlayMessage">Press SPACE to continue</p>
+                    <button class="btn-neon" id="overlayButton">RESUME</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Right Panel - Next & Highscores -->
+        <div class="side-panel right-panel">
+            <div class="next-box">
+                <div class="next-label">NEXT</div>
+                <canvas id="nextCanvas" width="120" height="360"></canvas>
+            </div>
+            
+            <div class="highscore-mini">
+                <div class="highscore-label">TOP SCORES</div>
+                <div id="miniLeaderboard" class="mini-leaderboard">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+            
+            <div class="controls-info">
+                <div class="control-item">
+                    <span class="key">←→</span> Move
+                </div>
+                <div class="control-item">
+                    <span class="key">↑</span> Rotate
+                </div>
+                <div class="control-item">
+                    <span class="key">↓</span> Soft Drop
+                </div>
+                <div class="control-item">
+                    <span class="key">SPACE</span> Hard Drop
+                </div>
+                <div class="control-item">
+                    <span class="key">C</span> Hold
+                </div>
+                <div class="control-item">
+                    <span class="key">ESC</span> Pause
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Game Start Modal -->
+    <div class="modal" id="startModal">
+        <div class="modal-content">
+            <h2>Welcome to JETRIX</h2>
+            <div class="player-input">
+                <label for="playerName">Enter Your Name:</label>
+                <input type="text" id="playerName" maxlength="20" placeholder="Player">
+            </div>
+            <div class="difficulty-select">
+                <label>Select Difficulty:</label>
+                <div class="difficulty-buttons">
+                    <button class="btn-difficulty" data-mode="easy">EASY</button>
+                    <button class="btn-difficulty active" data-mode="normal">NORMAL</button>
+                    <button class="btn-difficulty" data-mode="hard">HARD</button>
+                    <button class="btn-difficulty" data-mode="extreme">EXTREME</button>
+                </div>
+            </div>
+            <button class="btn-neon btn-start" id="startGame">START GAME</button>
+            <button class="btn-neon btn-secondary" id="viewHighscores">HIGHSCORES</button>
+        </div>
+    </div>
+    
+    <!-- Highscores Modal -->
+    <div class="modal" id="highscoreModal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>HIGHSCORES</h2>
+                <button class="btn-close" id="closeHighscores">×</button>
+            </div>
+            <div class="leaderboard-tabs">
+                <button class="tab-btn active" data-range="all">ALL TIME</button>
+                <button class="tab-btn" data-range="monthly">MONTHLY</button>
+                <button class="tab-btn" data-range="weekly">WEEKLY</button>
+                <button class="tab-btn" data-range="daily">TODAY</button>
+            </div>
+            <div class="leaderboard-modes">
+                <button class="mode-btn active" data-mode="normal">NORMAL</button>
+                <button class="mode-btn" data-mode="easy">EASY</button>
+                <button class="mode-btn" data-mode="hard">HARD</button>
+                <button class="mode-btn" data-mode="extreme">EXTREME</button>
+            </div>
+            <div id="leaderboardContent" class="leaderboard-content">
+                <div class="loading">Loading highscores...</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Game Over Modal -->
+    <div class="modal" id="gameOverModal">
+        <div class="modal-content">
+            <h2>GAME OVER</h2>
+            <div class="game-over-stats">
+                <div class="stat-row">
+                    <span>Final Score:</span>
+                    <span id="finalScore">0</span>
+                </div>
+                <div class="stat-row">
+                    <span>Level Reached:</span>
+                    <span id="finalLevel">1</span>
+                </div>
+                <div class="stat-row">
+                    <span>Lines Cleared:</span>
+                    <span id="finalLines">0</span>
+                </div>
+                <div class="stat-row highlight" id="highscoreRank" style="display: none;">
+                    <span>NEW HIGHSCORE!</span>
+                    <span>Rank #<span id="rankNumber">1</span></span>
+                </div>
+            </div>
+            <div class="game-over-buttons">
+                <button class="btn-neon" id="playAgain">PLAY AGAIN</button>
+                <button class="btn-neon btn-secondary" id="mainMenu">MAIN MENU</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Audio elements -->
+    <audio id="moveSound" preload="auto"></audio>
+    <audio id="rotateSound" preload="auto"></audio>
+    <audio id="dropSound" preload="auto"></audio>
+    <audio id="clearSound" preload="auto"></audio>
+    <audio id="tetrisSound" preload="auto"></audio>
+    <audio id="gameOverSound" preload="auto"></audio>
+    <audio id="levelUpSound" preload="auto"></audio>
+    
+    <script type="module">
+        import { Game } from './js/tetris.js';
+        import { HighscoreManager } from './js/highscore.js';
+        
+        window.addEventListener('DOMContentLoaded', async () => {
+            const game = new Game();
+            const highscores = new HighscoreManager();
+            
+            await game.initialize();
+            await highscores.initialize();
+            
+            // Make game and highscores globally accessible for debugging
+            window.game = game;
+            window.highscores = highscores;
+        });
+    </script>
+</body>
+</html>
