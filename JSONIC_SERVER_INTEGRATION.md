@@ -197,15 +197,23 @@ Open `test-server-integration.html` in a browser to test:
 
 ### Common Issues
 
+#### WebSocket connection errors in console
+**Note**: If you see WebSocket connection errors to `/ws`, these are likely from webpack-dev-server's Hot Module Replacement (HMR) system, NOT from the JSONIC client. This is normal in development builds.
+
+- **Webpack HMR errors**: `WebSocket connection to 'ws://localhost:8080/ws' failed` (Normal - webpack development server)
+- **JSONIC client**: Connects to `wss://jsonic1.immudb.io/api/v1/ws` (Our integration)
+
 #### "Failed to connect to server"
 - Check internet connection
 - Verify server URL is accessible
 - Look for CORS issues in browser console
+- JSONIC client will automatically fall back to mock mode
 
 #### "Score not appearing in global leaderboard"
 - Verify score is a personal best
 - Check server connection status
 - Wait for cache to refresh (30 seconds)
+- If server unavailable, scores appear in mock global leaderboard
 
 #### "Local scores not saving"
 - Check browser storage permissions
