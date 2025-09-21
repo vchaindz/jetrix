@@ -1,5 +1,5 @@
-// For now, we'll use a simplified database approach
-// Can be upgraded to full JSONIC integration later
+// Jetrix Highscore Manager using JSONIC WebAssembly Database
+import JSONIC from './jsonic-wrapper.js';
 
 export class HighscoreManager {
     constructor() {
@@ -7,47 +7,146 @@ export class HighscoreManager {
         this.playerId = null;
         this.leaderboardCache = new Map();
         this.updateCallbacks = new Set();
+        this.isInitialized = false;
     }
     
     async initialize() {
-        // Get or create player ID
-        this.playerId = localStorage.getItem('playerId');
-        if (!this.playerId) {
-            this.playerId = this.generatePlayerId();
-            localStorage.setItem('playerId', this.playerId);
+        if (this.isInitialized) return;
+        
+        try {
+            // Get or create player ID
+            this.playerId = localStorage.getItem('playerId');
+            if (!this.playerId) {
+                this.playerId = this.generatePlayerId();
+                localStorage.setItem('playerId', this.playerId);
+            }
+            
+            // Configure JSONIC for Jetrix
+            JSONIC.configure({
+                debug: false,
+                enablePersistence: true,
+                persistenceKey: 'jetrix_highscores'
+            });
+            
+            // Initialize JSONIC database
+            this.db = await JSONIC.createDatabase();
+            
+            console.log('✅ JSONIC highscore database initialized successfully');
+            
+            // Load initial leaderboard
+            await this.loadMiniLeaderboard();
+            
+            this.isInitialized = true;
+            
+        } catch (error) {
+            console.error('❌ Failed to initialize JSONIC database:', error);
+            console.log('📦 Falling back to localStorage...');
+            
+            // Fallback to localStorage if JSONIC fails
+            this.useFallbackStorage();
+            await this.loadMiniLeaderboard();
+            this.isInitialized = true;
         }
-        
-        // For now, we'll use localStorage as our database
-        // This can be upgraded to JSONIC or other database later
-        console.log('Initializing highscore manager with localStorage');
-        
-        // Initialize with localStorage
-        this.useFallbackStorage();
-        
-        // Load initial leaderboard
-        await this.loadMiniLeaderboard();
-        
-        console.log('Highscore manager initialized successfully');
     }
     
     generatePlayerId() {
         return 'player_' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
     }
     
-    
     async submitScore(scoreData) {
-        // Use localStorage implementation directly
-        return this.submitScoreFallback(scoreData);
+        if (!this.isInitialized) {
+            await this.initialize();
+        }
+        
+        const result = {
+            isHighscore: false,
+            rank: null,
+            personalBest: null
+        };
+        
+        try {
+            if (!this.db) {
+                return this.submitScoreFallback(scoreData);
+            }
+            
+            // Check personal best for this game mode
+            const personalBest = await this.getPersonalBest(scoreData.gameMode);
+            result.personalBest = personalBest?.score || 0;
+            
+            // Only save if it's a new personal best or first score
+            if (!personalBest || scoreData.score > personalBest.score) {
+                // Create highscore entry
+                const highscoreEntry = {
+                    playerId: this.playerId,
+                    playerName: scoreData.playerName || 'Anonymous',
+                    score: scoreData.score,
+                    level: scoreData.level,
+                    lines: scoreData.lines,
+                    gameMode: scoreData.gameMode,
+                    timestamp: Date.now(),
+                    metadata: scoreData.metadata || {}
+                };
+                
+                // Insert into JSONIC database
+                await this.db.insertScore(highscoreEntry);
+                
+                // Get current rank
+                result.rank = await this.getRank(scoreData.score, scoreData.gameMode);
+                result.isHighscore = true;
+                
+                // Clear cache and update displays
+                this.leaderboardCache.clear();
+                await this.loadMiniLeaderboard();
+                this.notifySubscribers();
+                
+                console.log(`🏆 New highscore saved: ${scoreData.score} (Rank #${result.rank})`);
+            }
+            
+        } catch (error) {
+            console.error('Failed to submit score to JSONIC:', error);
+            return this.submitScoreFallback(scoreData);
+        }
+        
+        return result;
     }
     
     async getPersonalBest(gameMode) {
-        return this.getPersonalBestFallback(gameMode);
+        if (!this.db) return this.getPersonalBestFallback(gameMode);
+        
+        try {
+            const scores = await this.db.findScores({
+                playerId: this.playerId,
+                gameMode: gameMode
+            }, {
+                sort: { score: -1 },
+                limit: 1
+            });
+            
+            return scores[0] || null;
+        } catch (error) {
+            console.error('Failed to get personal best:', error);
+            return this.getPersonalBestFallback(gameMode);
+        }
     }
     
     async getRank(score, gameMode) {
-        const scores = this.getLocalScores();
-        const filtered = scores.filter(s => s.gameMode === gameMode && s.score > score);
-        return filtered.length + 1;
+        if (!this.db) {
+            const scores = this.getLocalScores();
+            const filtered = scores.filter(s => s.gameMode === gameMode && s.score > score);
+            return filtered.length + 1;
+        }
+        
+        try {
+            const higherScores = await this.db.countScores({
+                gameMode: gameMode,
+                score: { $gt: score }
+            });
+            
+            return higherScores + 1;
+        } catch (error) {
+            console.error('Failed to get rank:', error);
+            return 999;
+        }
     }
     
     async getLeaderboard(gameMode = 'normal', timeRange = 'all', limit = 100) {
@@ -61,16 +160,45 @@ export class HighscoreManager {
             }
         }
         
-        // Use localStorage implementation
-        const leaderboard = this.getLeaderboardFallback(gameMode, timeRange, limit);
+        if (!this.db) return this.getLeaderboardFallback(gameMode, timeRange, limit);
         
-        // Cache result
-        this.leaderboardCache.set(cacheKey, {
-            data: leaderboard,
-            timestamp: Date.now()
-        });
-        
-        return leaderboard;
+        try {
+            // Build query filter
+            const filter = { gameMode: gameMode };
+            if (timeRange !== 'all') {
+                filter.timestamp = { $gte: this.getTimeCutoff(timeRange) };
+            }
+            
+            // Get scores from JSONIC
+            const scores = await this.db.findScores(filter, {
+                sort: { score: -1 },
+                limit: limit
+            });
+            
+            // Format as leaderboard entries
+            const leaderboard = scores.map((score, index) => ({
+                rank: index + 1,
+                playerId: score.playerId,
+                playerName: score.playerName,
+                score: score.score,
+                level: score.level,
+                lines: score.lines,
+                timestamp: score.timestamp,
+                isCurrentPlayer: score.playerId === this.playerId
+            }));
+            
+            // Cache result
+            this.leaderboardCache.set(cacheKey, {
+                data: leaderboard,
+                timestamp: Date.now()
+            });
+            
+            return leaderboard;
+            
+        } catch (error) {
+            console.error('Failed to get leaderboard from JSONIC:', error);
+            return this.getLeaderboardFallback(gameMode, timeRange, limit);
+        }
     }
     
     getTimeCutoff(timeRange) {
@@ -88,8 +216,13 @@ export class HighscoreManager {
     }
     
     async loadMiniLeaderboard() {
-        const scores = await this.getLeaderboard('normal', 'all', 5);
-        this.updateMiniLeaderboard(scores);
+        try {
+            const scores = await this.getLeaderboard('normal', 'all', 5);
+            this.updateMiniLeaderboard(scores);
+        } catch (error) {
+            console.error('Failed to load mini leaderboard:', error);
+            this.updateMiniLeaderboard([]);
+        }
     }
     
     updateMiniLeaderboard(scores) {
@@ -153,28 +286,33 @@ export class HighscoreManager {
         
         content.innerHTML = '<div class="loading">Loading scores...</div>';
         
-        const scores = await this.getLeaderboard(gameMode, timeRange, 50);
-        
-        if (scores.length === 0) {
-            content.innerHTML = '<div class="no-scores">No scores recorded yet. Be the first!</div>';
-            return;
+        try {
+            const scores = await this.getLeaderboard(gameMode, timeRange, 50);
+            
+            if (scores.length === 0) {
+                content.innerHTML = '<div class="no-scores">No scores recorded yet. Be the first!</div>';
+                return;
+            }
+            
+            content.innerHTML = `
+                <div class="leaderboard-table">
+                    <div class="leaderboard-header">
+                        <span class="col-rank">RANK</span>
+                        <span class="col-name">PLAYER</span>
+                        <span class="col-score">SCORE</span>
+                        <span class="col-level">LEVEL</span>
+                        <span class="col-lines">LINES</span>
+                        <span class="col-date">DATE</span>
+                    </div>
+                    <div class="leaderboard-entries">
+                        ${scores.map(entry => this.renderLeaderboardEntry(entry)).join('')}
+                    </div>
+                </div>
+            `;
+        } catch (error) {
+            console.error('Failed to load leaderboard content:', error);
+            content.innerHTML = '<div class="no-scores">Failed to load leaderboard. Please try again.</div>';
         }
-        
-        content.innerHTML = `
-            <div class="leaderboard-table">
-                <div class="leaderboard-header">
-                    <span class="col-rank">RANK</span>
-                    <span class="col-name">PLAYER</span>
-                    <span class="col-score">SCORE</span>
-                    <span class="col-level">LEVEL</span>
-                    <span class="col-lines">LINES</span>
-                    <span class="col-date">DATE</span>
-                </div>
-                <div class="leaderboard-entries">
-                    ${scores.map(entry => this.renderLeaderboardEntry(entry)).join('')}
-                </div>
-            </div>
-        `;
     }
     
     renderLeaderboardEntry(entry) {
@@ -223,9 +361,27 @@ export class HighscoreManager {
         this.updateCallbacks.forEach(cb => cb());
     }
     
-    // Fallback methods using localStorage
+    async getStats() {
+        if (!this.db) {
+            const scores = this.getLocalScores();
+            return {
+                totalScores: scores.length,
+                uniquePlayers: new Set(scores.map(s => s.playerId)).size,
+                highestScore: Math.max(...scores.map(s => s.score), 0)
+            };
+        }
+        
+        try {
+            return await this.db.getStats();
+        } catch (error) {
+            console.error('Failed to get stats:', error);
+            return { totalScores: 0, uniquePlayers: 0, highestScore: 0 };
+        }
+    }
+    
+    // Fallback methods using localStorage (unchanged from before)
     useFallbackStorage() {
-        console.log('Using localStorage fallback for highscores');
+        console.log('📦 Using localStorage fallback for highscores');
         this.db = null;
     }
     

@@ -8,10 +8,16 @@ export default defineConfig({
       input: {
         main: 'index.html'
       }
-    }
+    },
+    assetsInlineLimit: 0, // Don't inline WASM files
+    copyPublicDir: false
   },
   server: {
     port: 3000,
-    open: true
-  }
+    open: true,
+    fs: {
+      allow: ['..']
+    }
+  },
+  assetsInclude: ['**/*.wasm']
 });
