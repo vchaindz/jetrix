@@ -6,17 +6,30 @@
 import init, { JsonDB } from './jsonic_wasm.js';
 
 // Configuration for GitHub Pages
-const getBaseUrl = () => {
+const getWasmUrl = () => {
     const { pathname } = window.location;
+    
+    // For GitHub Pages deployment
     if (pathname.startsWith('/jetrix/')) {
-        return '/jetrix/';
+        // Check if this is a built version by looking for assets folder
+        const scripts = document.querySelectorAll('script[src*="assets/"]');
+        if (scripts.length > 0) {
+            // Extract the hash from the script tag to find the correct WASM file
+            const scriptSrc = scripts[0].src;
+            // Look for WASM files in the same assets directory
+            return scriptSrc.replace(/main-[^.]+\.js$/, '') + 'jsonic_wasm_bg-CqPUqEIf.wasm';
+        }
+        // Fallback for GitHub Pages
+        return '/jetrix/assets/jsonic_wasm_bg-CqPUqEIf.wasm';
     }
-    return '/';
+    
+    // For local development
+    return './js/jsonic_wasm_bg.wasm';
 };
 
 let CONFIG = {
-    wasmUrl: getBaseUrl() + 'js/jsonic_wasm_bg.wasm',
-    debug: false,
+    wasmUrl: getWasmUrl(),
+    debug: true, // Enable debug to see what's happening
     enablePersistence: true,
     persistenceKey: 'jetrix_highscores'
 };
@@ -29,15 +42,48 @@ async function initializeWasm() {
     if (initialized) return;
     
     if (!initPromise) {
-        initPromise = init(CONFIG.wasmUrl).then(() => {
-            initialized = true;
-            if (CONFIG.debug) {
-                console.log('[JSONIC] WASM module initialized for Jetrix');
+        initPromise = (async () => {
+            try {
+                if (CONFIG.debug) {
+                    console.log('[JSONIC] Attempting to load WASM from:', CONFIG.wasmUrl);
+                }
+                
+                await init(CONFIG.wasmUrl);
+                initialized = true;
+                
+                if (CONFIG.debug) {
+                    console.log('[JSONIC] ✅ WASM module initialized for Jetrix');
+                }
+            } catch (error) {
+                console.error('[JSONIC] ❌ Failed to initialize WASM:', error);
+                console.log('[JSONIC] 🔄 Trying alternative WASM URL...');
+                
+                // Try alternative URLs
+                const alternativeUrls = [
+                    './js/jsonic_wasm_bg.wasm',
+                    '/jetrix/js/jsonic_wasm_bg.wasm',
+                    '../jsonic_wasm_bg.wasm'
+                ];
+                
+                for (const url of alternativeUrls) {
+                    try {
+                        if (CONFIG.debug) {
+                            console.log('[JSONIC] Trying:', url);
+                        }
+                        await init(url);
+                        initialized = true;
+                        console.log('[JSONIC] ✅ WASM loaded from alternative URL:', url);
+                        return;
+                    } catch (altError) {
+                        if (CONFIG.debug) {
+                            console.log('[JSONIC] Failed alternative URL:', url, altError.message);
+                        }
+                    }
+                }
+                
+                throw new Error('All WASM loading attempts failed');
             }
-        }).catch(error => {
-            console.error('[JSONIC] Failed to initialize WASM:', error);
-            throw error;
-        });
+        })();
     }
     
     return initPromise;

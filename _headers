@@ -1,0 +1,8 @@
+# Headers for GitHub Pages
+/*.wasm
+  Content-Type: application/wasm
+  Cache-Control: public, max-age=31536000
+
+/assets/*.wasm
+  Content-Type: application/wasm
+  Cache-Control: public, max-age=31536000

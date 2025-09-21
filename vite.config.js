@@ -17,7 +17,14 @@ export default defineConfig({
     open: true,
     fs: {
       allow: ['..']
+    },
+    headers: {
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin'
     }
   },
-  assetsInclude: ['**/*.wasm']
+  assetsInclude: ['**/*.wasm'],
+  optimizeDeps: {
+    exclude: ['jsonic_wasm.js']
+  }
 });
