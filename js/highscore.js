@@ -413,9 +413,10 @@ export class HighscoreManager {
         
         content.innerHTML = '<div class="loading">Loading scores...</div>';
         
-        // Determine source based on active tab
-        const isGlobalTab = document.querySelector('.source-btn.active')?.dataset.source === 'global';
-        const source = isGlobalTab ? 'global' : 'local';
+        // Default to global source for cross-device highscores
+        // If source buttons exist, check which is active, otherwise use global
+        const sourceBtn = document.querySelector('.source-btn.active');
+        const source = sourceBtn ? sourceBtn.dataset.source : 'global';
         
         try {
             const scores = await this.getLeaderboard(gameMode, timeRange, 50, source);
