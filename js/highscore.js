@@ -107,49 +107,51 @@ export class HighscoreManager {
             const personalBest = await this.getPersonalBest(scoreData.gameMode);
             result.personalBest = personalBest?.score || 0;
             
-            // Only save if it's a new personal best or first score
+            // Create highscore entry
+            const highscoreEntry = {
+                playerId: this.playerId,
+                playerName: scoreData.playerName || 'Anonymous',
+                score: scoreData.score,
+                level: scoreData.level,
+                lines: scoreData.lines,
+                gameMode: scoreData.gameMode,
+                timestamp: Date.now(),
+                metadata: scoreData.metadata || {}
+            };
+            
+            // Always submit to server if connected (for global leaderboard)
+            if (this.serverClient) {
+                try {
+                    await this.serverClient.submitScore(highscoreEntry);
+                    console.log('🌐 Score synced to global leaderboard');
+                    
+                    // Get global rank
+                    const globalLeaderboard = await this.serverClient.getLeaderboard(scoreData.gameMode, { limit: 1000 });
+                    result.globalRank = globalLeaderboard.findIndex(s => s.score < scoreData.score) + 1;
+                    if (result.globalRank === 0) result.globalRank = globalLeaderboard.length + 1;
+                } catch (serverError) {
+                    console.warn('⚠️ Could not sync score to server:', serverError);
+                }
+            }
+            
+            // Save to local database if it's a new personal best or first score
             if (!personalBest || scoreData.score > personalBest.score) {
-                // Create highscore entry
-                const highscoreEntry = {
-                    playerId: this.playerId,
-                    playerName: scoreData.playerName || 'Anonymous',
-                    score: scoreData.score,
-                    level: scoreData.level,
-                    lines: scoreData.lines,
-                    gameMode: scoreData.gameMode,
-                    timestamp: Date.now(),
-                    metadata: scoreData.metadata || {}
-                };
-                
                 // Insert into local JSONIC database
                 await this.db.insertScore(highscoreEntry);
-                
-                // Submit to server if connected
-                if (this.serverClient) {
-                    try {
-                        await this.serverClient.submitScore(highscoreEntry);
-                        console.log('🌐 Score synced to global leaderboard');
-                        
-                        // Get global rank
-                        const globalLeaderboard = await this.serverClient.getLeaderboard(scoreData.gameMode, 1000);
-                        result.globalRank = globalLeaderboard.findIndex(s => s.score < scoreData.score) + 1;
-                        if (result.globalRank === 0) result.globalRank = globalLeaderboard.length + 1;
-                    } catch (serverError) {
-                        console.warn('⚠️ Could not sync score to server:', serverError);
-                    }
-                }
                 
                 // Get local rank
                 result.rank = await this.getRank(scoreData.score, scoreData.gameMode);
                 result.isHighscore = true;
                 
-                // Clear cache and update displays
-                this.leaderboardCache.clear();
-                await this.loadMiniLeaderboard();
-                this.notifySubscribers();
-                
-                console.log(`🏆 New highscore saved: ${scoreData.score} (Local Rank #${result.rank}, Global Rank #${result.globalRank || 'N/A'})`);
+                console.log(`🏆 New personal best saved: ${scoreData.score} (Local Rank #${result.rank}, Global Rank #${result.globalRank || 'N/A'})`);
+            } else {
+                console.log(`📊 Score submitted to global leaderboard: ${scoreData.score} (Global Rank #${result.globalRank || 'N/A'})`);
             }
+            
+            // Always clear cache and update displays to show new global scores
+            this.leaderboardCache.clear();
+            await this.loadMiniLeaderboard();
+            this.notifySubscribers();
             
         } catch (error) {
             console.error('Failed to submit score to JSONIC:', error);
