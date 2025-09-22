@@ -16,6 +16,12 @@ export class HighscoreManager {
     async initialize() {
         if (this.isInitialized) return;
         
+        console.log('🎮 Starting Highscore System Initialization...');
+        console.log('📱 User Agent:', navigator.userAgent);
+        console.log('📱 Platform:', navigator.platform);
+        console.log('📱 Mobile Device:', /Mobile|Android|iPhone|iPad/i.test(navigator.userAgent));
+        console.log('📄 DOM Ready State:', document.readyState);
+        
         try {
             // Get or create player ID
             this.playerId = localStorage.getItem('playerId');
@@ -57,9 +63,11 @@ export class HighscoreManager {
             }
             
             // Load initial leaderboard
+            console.log('📊 Loading initial mini leaderboard...');
             await this.loadMiniLeaderboard();
             
             this.isInitialized = true;
+            console.log('✅ Highscore system initialization complete');
             
         } catch (error) {
             console.error('❌ Failed to initialize JSONIC database:', error);
@@ -67,8 +75,10 @@ export class HighscoreManager {
             
             // Fallback to localStorage if JSONIC fails
             this.useFallbackStorage();
+            console.log('📊 Loading mini leaderboard with fallback...');
             await this.loadMiniLeaderboard();
             this.isInitialized = true;
+            console.log('✅ Highscore system initialized with fallback storage');
         }
     }
     
@@ -189,12 +199,14 @@ export class HighscoreManager {
     }
     
     async getLeaderboard(gameMode = 'normal', timeRange = 'all', limit = 100, source = 'global') {
+        console.log('🎯 getLeaderboard() called:', { gameMode, timeRange, limit, source });
         const cacheKey = `${source}-${gameMode}-${timeRange}-${limit}`;
         
         // Check cache
         if (this.leaderboardCache.has(cacheKey)) {
             const cached = this.leaderboardCache.get(cacheKey);
             if (Date.now() - cached.timestamp < 30000) { // 30 second cache
+                console.log('📦 Returning cached leaderboard data');
                 return cached.data;
             }
         }
@@ -202,9 +214,15 @@ export class HighscoreManager {
         let leaderboard = [];
         
         // Try to get global leaderboard from server
+        console.log('📡 Server client:', this.serverClient ? 'exists' : 'null');
+        console.log('📡 Requesting source:', source);
+        
         if (source === 'global' && this.serverClient) {
             try {
+                console.log('📡 Fetching from JSONIC server...');
                 const serverScores = await this.serverClient.getLeaderboard(gameMode, { limit, timeRange });
+                console.log('📊 Server returned', serverScores.length, 'scores');
+                console.log('📊 Raw server response:', JSON.stringify(serverScores, null, 2));
                 
                 // Format server scores
                 leaderboard = serverScores.map((score, index) => ({
@@ -287,39 +305,101 @@ export class HighscoreManager {
     }
     
     async loadMiniLeaderboard() {
+        console.log('🔄 loadMiniLeaderboard() called');
+        console.log('📱 DOM ready state:', document.readyState);
+        console.log('📱 miniLeaderboard element exists:', !!document.getElementById('miniLeaderboard'));
+        
         try {
             // Try to load global leaderboard first, fall back to local
+            console.log('📡 Attempting to fetch global leaderboard...');
             const scores = await this.getLeaderboard('normal', 'all', 5, 'global');
+            console.log('📊 Global scores received:', scores.length, 'entries');
+            console.log('📊 Score data:', JSON.stringify(scores, null, 2));
             this.updateMiniLeaderboard(scores);
         } catch (error) {
-            console.error('Failed to load mini leaderboard:', error);
+            console.error('❌ Failed to load mini leaderboard:', error.message);
             // Try local as fallback
             try {
+                console.log('📁 Trying local leaderboard fallback...');
                 const localScores = await this.getLeaderboard('normal', 'all', 5, 'local');
+                console.log('📊 Local scores received:', localScores.length, 'entries');
+                console.log('📊 Local data:', JSON.stringify(localScores, null, 2));
                 this.updateMiniLeaderboard(localScores);
             } catch (localError) {
-                console.error('Failed to load local mini leaderboard:', localError);
+                console.error('❌ Failed to load local mini leaderboard:', localError.message);
+                console.log('📊 Displaying empty leaderboard');
                 this.updateMiniLeaderboard([]);
             }
         }
     }
     
     updateMiniLeaderboard(scores) {
-        const container = document.getElementById('miniLeaderboard');
-        if (!container) return;
+        console.log('🖥️ updateMiniLeaderboard() called with', scores?.length || 0, 'scores');
         
-        if (scores.length === 0) {
-            container.innerHTML = '<div class="no-scores">No scores yet</div>';
+        // Ensure DOM is ready
+        if (document.readyState !== 'complete' && document.readyState !== 'interactive') {
+            console.log('⏳ DOM not ready, waiting...');
+            document.addEventListener('DOMContentLoaded', () => {
+                console.log('📄 DOM ready, updating leaderboard now');
+                this.updateMiniLeaderboard(scores);
+            });
             return;
         }
         
-        container.innerHTML = scores.map(entry => `
+        const container = document.getElementById('miniLeaderboard');
+        console.log('📦 Container found:', !!container);
+        
+        if (!container) {
+            console.error('❌ miniLeaderboard container not found!');
+            console.log('🔍 Attempting to find container...');
+            console.log('🔍 Document body:', document.body ? 'exists' : 'missing');
+            console.log('🔍 Document readyState:', document.readyState);
+            console.log('🔍 All elements with class mini-leaderboard:', document.querySelectorAll('.mini-leaderboard').length);
+            
+            // Try again after a short delay
+            setTimeout(() => {
+                console.log('🔄 Retrying to find container...');
+                const retryContainer = document.getElementById('miniLeaderboard');
+                if (retryContainer) {
+                    console.log('✅ Container found on retry!');
+                    this.updateMiniLeaderboard(scores);
+                } else {
+                    console.error('❌ Container still not found after retry');
+                }
+            }, 100);
+            return;
+        }
+        
+        console.log('📊 Container current innerHTML length:', container.innerHTML.length);
+        
+        if (!scores || scores.length === 0) {
+            console.log('📊 No scores - showing empty message');
+            container.innerHTML = '<div class="no-scores">No scores yet</div>';
+            console.log('📊 Empty message set');
+            return;
+        }
+        
+        console.log('📊 Building HTML for scores...');
+        const html = scores.map((entry, index) => {
+            console.log(`📊 Score ${index + 1}:`, {
+                rank: entry.rank,
+                name: entry.playerName,
+                score: entry.score,
+                isCurrentPlayer: entry.isCurrentPlayer
+            });
+            return `
             <div class="mini-score-entry ${entry.isCurrentPlayer ? 'current-player' : ''}">
                 <span class="rank">#${entry.rank}</span>
                 <span class="name">${this.truncateName(entry.playerName, 10)}</span>
                 <span class="score">${entry.score.toLocaleString()}</span>
             </div>
-        `).join('');
+        `;
+        }).join('');
+        
+        console.log('📊 Generated HTML length:', html.length);
+        container.innerHTML = html;
+        console.log('✅ Container innerHTML updated');
+        console.log('📊 Final innerHTML length:', container.innerHTML.length);
     }
     
     async displayLeaderboard() {
