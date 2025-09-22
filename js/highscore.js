@@ -335,71 +335,39 @@ export class HighscoreManager {
     
     updateMiniLeaderboard(scores) {
         console.log('🖥️ updateMiniLeaderboard() called with', scores?.length || 0, 'scores');
-        
-        // Ensure DOM is ready
-        if (document.readyState !== 'complete' && document.readyState !== 'interactive') {
-            console.log('⏳ DOM not ready, waiting...');
-            document.addEventListener('DOMContentLoaded', () => {
-                console.log('📄 DOM ready, updating leaderboard now');
-                this.updateMiniLeaderboard(scores);
-            });
-            return;
+
+        const performUpdate = () => {
+            const container = document.getElementById('miniLeaderboard');
+            if (!container) {
+                console.error('❌ miniLeaderboard container not found. Element may be missing from HTML or not yet rendered.');
+                return;
+            }
+
+            console.log('✅ Container found. Rendering scores.');
+            if (!scores || scores.length === 0) {
+                container.innerHTML = '<div class="no-scores">No scores yet</div>';
+                return;
+            }
+
+            const html = scores.map((entry) => `
+                <div class="mini-score-entry ${entry.isCurrentPlayer ? 'current-player' : ''}">
+                    <span class="rank">#${entry.rank}</span>
+                    <span class="name">${this.truncateName(entry.playerName, 10)}</span>
+                    <span class="score">${entry.score.toLocaleString()}</span>
+                </div>
+            `).join('');
+
+            container.innerHTML = html;
+            console.log('✅ Leaderboard updated.');
+        };
+
+        // Defer update until the DOM is fully loaded and parsed.
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', performUpdate);
+        } else {
+            // If DOM is already interactive or complete, execute immediately.
+            performUpdate();
         }
-        
-        const container = document.getElementById('miniLeaderboard');
-        console.log('📦 Container found:', !!container);
-        
-        if (!container) {
-            console.error('❌ miniLeaderboard container not found!');
-            console.log('🔍 Attempting to find container...');
-            console.log('🔍 Document body:', document.body ? 'exists' : 'missing');
-            console.log('🔍 Document readyState:', document.readyState);
-            console.log('🔍 All elements with class mini-leaderboard:', document.querySelectorAll('.mini-leaderboard').length);
-            
-            // Try again after a short delay
-            setTimeout(() => {
-                console.log('🔄 Retrying to find container...');
-                const retryContainer = document.getElementById('miniLeaderboard');
-                if (retryContainer) {
-                    console.log('✅ Container found on retry!');
-                    this.updateMiniLeaderboard(scores);
-                } else {
-                    console.error('❌ Container still not found after retry');
-                }
-            }, 100);
-            return;
-        }
-        
-        console.log('📊 Container current innerHTML length:', container.innerHTML.length);
-        
-        if (!scores || scores.length === 0) {
-            console.log('📊 No scores - showing empty message');
-            container.innerHTML = '<div class="no-scores">No scores yet</div>';
-            console.log('📊 Empty message set');
-            return;
-        }
-        
-        console.log('📊 Building HTML for scores...');
-        const html = scores.map((entry, index) => {
-            console.log(`📊 Score ${index + 1}:`, {
-                rank: entry.rank,
-                name: entry.playerName,
-                score: entry.score,
-                isCurrentPlayer: entry.isCurrentPlayer
-            });
-            return `
-            <div class="mini-score-entry ${entry.isCurrentPlayer ? 'current-player' : ''}">
-                <span class="rank">#${entry.rank}</span>
-                <span class="name">${this.truncateName(entry.playerName, 10)}</span>
-                <span class="score">${entry.score.toLocaleString()}</span>
-            </div>
-        `;
-        }).join('');
-        
-        console.log('📊 Generated HTML length:', html.length);
-        container.innerHTML = html;
-        console.log('✅ Container innerHTML updated');
-        console.log('📊 Final innerHTML length:', container.innerHTML.length);
     }
     
     async displayLeaderboard() {
