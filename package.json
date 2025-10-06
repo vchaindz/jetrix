@@ -13,6 +13,7 @@
     "predeploy": "npm run build:gh-pages"
   },
   "dependencies": {
+    "@fingerprintjs/fingerprintjs": "^4.6.2",
     "ws": "^8.18.3"
   },
   "devDependencies": {

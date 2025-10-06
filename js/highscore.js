@@ -1,34 +1,40 @@
 // Jetrix Highscore Manager using JSONIC WebAssembly Database with Server Sync
 import JSONIC from './jsonic-wrapper.js';
 import JSONICServerClient from './jsonic-server.js';
+import FingerprintManager from './fingerprint-manager.js';
 
 export class HighscoreManager {
     constructor() {
         this.db = null;
         this.serverClient = null;
         this.playerId = null;
+        this.fingerprintManager = new FingerprintManager();
         this.leaderboardCache = new Map();
         this.updateCallbacks = new Set();
         this.isInitialized = false;
         this.serverEnabled = true; // Enable server sync by default
     }
-    
+
     async initialize() {
         if (this.isInitialized) return;
-        
+
         console.log('🎮 Starting Highscore System Initialization...');
         console.log('📱 User Agent:', navigator.userAgent);
         console.log('📱 Platform:', navigator.platform);
         console.log('📱 Mobile Device:', /Mobile|Android|iPhone|iPad/i.test(navigator.userAgent));
         console.log('📄 DOM Ready State:', document.readyState);
-        
+
         try {
-            // Get or create player ID
-            this.playerId = localStorage.getItem('playerId');
-            if (!this.playerId) {
-                this.playerId = this.generatePlayerId();
-                localStorage.setItem('playerId', this.playerId);
-            }
+            // Initialize browser fingerprint for stable user identification
+            const browserId = await this.fingerprintManager.initialize();
+
+            // Use fingerprint as player ID for consistent cross-session identification
+            this.playerId = browserId || this.generatePlayerId();
+
+            // Store playerId for backward compatibility
+            localStorage.setItem('playerId', this.playerId);
+
+            console.log('✅ Player ID initialized:', this.playerId.substring(0, 12) + '...');
             
             // Configure JSONIC for local storage
             JSONIC.configure({
@@ -54,8 +60,18 @@ export class HighscoreManager {
                         this.handleServerUpdate(event.detail);
                     });
                     
-                    // Sync existing local scores to server
-                    await this.syncExistingScoresToServer();
+                    // Only sync existing scores if this is the first time connecting
+                    // or if explicitly requested (not on every page refresh)
+                    const hasInitialSyncKey = 'jetrix_initial_sync_done';
+                    const hasInitialSync = localStorage.getItem(hasInitialSyncKey);
+                    
+                    if (!hasInitialSync) {
+                        console.log('🚀 First time connection - syncing existing scores...');
+                        await this.syncExistingScoresToServer();
+                        localStorage.setItem(hasInitialSyncKey, 'true');
+                    } else {
+                        console.log('✅ Initial sync already done - skipping auto-sync on refresh');
+                    }
                 } catch (serverError) {
                     console.warn('⚠️ Could not connect to JSONIC server, using local storage only:', serverError);
                     this.serverClient = null;
@@ -90,26 +106,30 @@ export class HighscoreManager {
         if (!this.isInitialized) {
             await this.initialize();
         }
-        
+
         const result = {
             isHighscore: false,
             rank: null,
             personalBest: null,
             globalRank: null
         };
-        
+
         try {
             if (!this.db) {
                 return this.submitScoreFallback(scoreData);
             }
-            
+
             // Check personal best for this game mode
             const personalBest = await this.getPersonalBest(scoreData.gameMode);
             result.personalBest = personalBest?.score || 0;
-            
+
+            // Get browser fingerprint for consistent identification
+            const browserId = this.fingerprintManager.getBrowserId();
+
             // Create highscore entry
             const highscoreEntry = {
                 playerId: this.playerId,
+                browserId: browserId, // Add browser ID for fingerprinting
                 playerName: scoreData.playerName || 'Anonymous',
                 score: scoreData.score,
                 level: scoreData.level,
@@ -118,12 +138,36 @@ export class HighscoreManager {
                 timestamp: Date.now(),
                 metadata: scoreData.metadata || {}
             };
+
+            // Generate content fingerprint to detect duplicate submissions
+            const contentFingerprint = await this.fingerprintManager.generateContentFingerprint({
+                playerId: this.playerId,
+                score: scoreData.score,
+                level: scoreData.level,
+                lines: scoreData.lines,
+                gameMode: scoreData.gameMode
+            });
+
+            if (contentFingerprint) {
+                highscoreEntry._fingerprint = contentFingerprint;
+            }
             
             // Always submit to server if connected (for global leaderboard)
             if (this.serverClient) {
                 try {
                     await this.serverClient.submitScore(highscoreEntry);
                     console.log('🌐 Score synced to global leaderboard');
+                    
+                    // Track this score as synced to prevent duplicate uploads
+                    const syncedScoresKey = 'jetrix_synced_score_ids';
+                    const syncedScoreIds = JSON.parse(localStorage.getItem(syncedScoresKey) || '[]');
+                    const scoreId = `${highscoreEntry.playerId}_${highscoreEntry.score}_${highscoreEntry.timestamp}`;
+                    
+                    if (!syncedScoreIds.includes(scoreId)) {
+                        syncedScoreIds.push(scoreId);
+                        localStorage.setItem(syncedScoresKey, JSON.stringify(syncedScoreIds));
+                        console.log('✅ Score marked as synced to prevent duplicate uploads');
+                    }
                     
                     // Get global rank
                     const globalLeaderboard = await this.serverClient.getLeaderboard(scoreData.gameMode, { limit: 1000 });
@@ -639,6 +683,15 @@ export class HighscoreManager {
         try {
             console.log('🔄 Checking for existing local scores to sync...');
             
+            // Check if we've already synced scores this session
+            const lastSyncKey = 'jetrix_last_sync_timestamp';
+            const syncedScoresKey = 'jetrix_synced_score_ids';
+            
+            // Get list of already synced score IDs
+            const syncedScoreIds = JSON.parse(localStorage.getItem(syncedScoresKey) || '[]');
+            console.log(`📝 Already synced ${syncedScoreIds.length} scores to server`);
+            console.log('📝 Synced score IDs:', syncedScoreIds);
+            
             // Get all local scores from JSONIC WASM database
             let localScores = [];
             if (this.db) {
@@ -683,26 +736,47 @@ export class HighscoreManager {
                 }
             }
             
-            console.log(`🎯 Total unique scores to sync: ${allScores.length}`);
+            // Filter out already synced scores
+            const scoresToSync = allScores.filter(score => {
+                // Create a unique ID for each score
+                const scoreId = `${score.playerId}_${score.score}_${score.timestamp}`;
+                console.log(`🔍 Checking score ID: ${scoreId} (synced: ${syncedScoreIds.includes(scoreId)})`);
+                return !syncedScoreIds.includes(scoreId);
+            });
             
-            if (allScores.length === 0) {
-                console.log('✅ No existing scores to sync');
+            console.log(`🎯 Found ${scoresToSync.length} new scores to sync (out of ${allScores.length} total)`);
+            
+            if (scoresToSync.length === 0) {
+                console.log('✅ No new scores to sync');
                 return;
             }
             
-            // Upload each score to server
+            // Upload each new score to server
             let syncedCount = 0;
             let skippedCount = 0;
+            const newlySyncedIds = [];
             
-            for (const score of allScores) {
+            for (const score of scoresToSync) {
                 try {
                     await this.serverClient.submitScore(score);
                     syncedCount++;
+                    
+                    // Track this score as synced
+                    const scoreId = `${score.playerId}_${score.score}_${score.timestamp}`;
+                    newlySyncedIds.push(scoreId);
+                    
                     console.log(`✅ Synced score: ${score.score} by ${score.playerName}`);
                 } catch (error) {
                     skippedCount++;
                     console.warn(`⚠️ Failed to sync score ${score.score}:`, error.message);
                 }
+            }
+            
+            // Update the list of synced scores
+            if (newlySyncedIds.length > 0) {
+                const updatedSyncedIds = [...syncedScoreIds, ...newlySyncedIds];
+                localStorage.setItem(syncedScoresKey, JSON.stringify(updatedSyncedIds));
+                localStorage.setItem(lastSyncKey, Date.now().toString());
             }
             
             console.log(`🌐 Sync complete: ${syncedCount} uploaded, ${skippedCount} skipped`);

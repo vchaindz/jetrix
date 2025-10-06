@@ -7,7 +7,7 @@
 class SimpleJSONICServerClient {
     constructor(config = {}) {
         this.serverUrl = config.url || 'https://jsonic1.immudb.io';
-        this.database = config.database || 'jetrix-fresh';
+        this.database = config.database || 'jetrix-fixed';
         this.ws = null;
         this.connected = false;
         this.requestId = 0;
@@ -219,7 +219,7 @@ class SimpleJSONICServerClient {
 
 export class JSONICServerClient extends SimpleJSONICServerClient {
     constructor(serverUrl = 'https://jsonic1.immudb.io') {
-        super({ url: serverUrl, database: 'jetrix-fresh' });
+        super({ url: serverUrl, database: 'jetrix-fixed' });
     }
 
     async submitHighscore(highscore) {
